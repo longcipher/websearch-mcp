@@ -13,4 +13,5 @@ const { values } = parseArgs({
   strict: true,
 });
 
+// biome-ignore lint/suspicious/noConsole: CLI apps require console output
 console.log(greeting(values.name ?? 'world'));
