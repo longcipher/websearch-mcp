@@ -1,0 +1,23 @@
+{
+  "devDependencies": {
+    "bun-types": "1.3.11"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "name": "common",
+  "private": true,
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "format": "biome check --fix .",
+    "lint": "biome check .",
+    "publint": "publint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "type": "module",
+  "version": "0.1.0"
+}

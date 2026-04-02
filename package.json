@@ -1,0 +1,28 @@
+{
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.8",
+    "@cucumber/cucumber": "^12.7.0",
+    "fast-check": "^4.6.0",
+    "publint": "^0.3.18",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "ultracite": "^7.3.2",
+    "vitest": "^4.1.1"
+  },
+  "name": "bun-workspace",
+  "private": true,
+  "scripts": {
+    "bdd": "node --import tsx ./node_modules/@cucumber/cucumber/bin/cucumber-js --import 'features/step_definitions/**/*.ts'",
+    "build": "bun run --filter '*' build",
+    "format": "bun run --filter '*' format",
+    "lint": "bun run --filter '*' lint",
+    "publint": "bun run --filter 'packages/*' publint",
+    "test": "bun run --filter '*' test",
+    "test:all": "bun run test && bun run bdd",
+    "typecheck": "bun run --filter '*' typecheck"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

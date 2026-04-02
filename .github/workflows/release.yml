@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install typos
+        uses: crate-ci/typos@master
+
+      - name: Install rumdl
+        run: pip install rumdl
+
+      - name: Install dependencies
+        run: just install
+
+      - name: Run CI checks
+        run: just ci
+
+      - name: Get version from tag
+        id: tag_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
+
+      - name: Check package.json version
+        run: |
+          FILE_VERSION=$(node -p "require('./package.json').version")
+          
+          echo "package.json version: $FILE_VERSION"
+          echo "Tag version: ${{ env.VERSION }}"
+          
+          if [ "$FILE_VERSION" != "${{ env.VERSION }}" ]; then
+            echo "Error: package.json version ($FILE_VERSION) does not match tag version (${{ env.VERSION }})"
+            exit 1
+          fi
+
+      - name: Generate Changelog
+        uses: orhun/git-cliff-action@v4
+        id: git-cliff
+        with:
+          config: cliff.toml
+          args: --verbose --latest --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.git-cliff.outputs.content }}
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}

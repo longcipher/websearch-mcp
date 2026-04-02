@@ -1,0 +1,16 @@
+# rumdl configuration file
+
+# Global configuration options
+[global]
+# List of rules to disable
+disable = ["MD013", "MD033", "MD041", "MD036"]
+
+# List of file/directory patterns to exclude from linting
+exclude = [
+    ".git",
+    ".github",
+    "node_modules",
+    "dist",
+    ".turbo",
+    "CHANGELOG.md",
+]
