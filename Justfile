@@ -28,11 +28,7 @@ lint:
 test:
   bun run --filter '*' test
 
-# Run BDD scenarios
-bdd:
-  bun run bdd
-
-# Run both TDD and BDD suites
+# Run all tests
 test-all:
   bun run test:all
 

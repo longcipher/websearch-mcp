@@ -27,7 +27,6 @@ A Model Context Protocol (MCP) server that provides web search and content extra
 just setup
 just lint
 just test
-just bdd
 just test-all
 
 # Start MCP server over stdio (for use with Claude Desktop, Cursor, etc.)
@@ -59,13 +58,13 @@ Resolve structured content from known sources (GitHub issues, Stack Exchange, Wi
 - Optional fuzzing with `jazzer.js` for parser-like or security-sensitive packages.
 - Optional benchmarks with Vitest Bench for code with explicit performance targets.
 
-## BDD + TDD Workflow
+## TDD Workflow
 
 1. Write a failing Gherkin scenario in `features/*.feature`.
 2. Drive implementation with failing Vitest tests.
 3. Add `fast-check` properties for invariants across many generated inputs.
 4. Run `just test` so deterministic examples and generated property checks execute together.
-5. Implement the smallest change that makes the inner loop pass, then re-run `just bdd`.
+5. Implement the smallest change that makes the inner loop pass.
 
 ## Project Convention
 
@@ -80,7 +79,6 @@ Resolve structured content from known sources (GitHub issues, Stack Exchange, Wi
 just format
 just lint
 just test
-just bdd
 just test-all
 just build
 just typecheck

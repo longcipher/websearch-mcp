@@ -172,7 +172,7 @@ citty >= 0.2.1
 - Lint and format with Biome — all code must pass `biome check` with zero errors.
 - Apply Ultracite conventions for additional opinionated formatting.
 - Type check with `tsc --noEmit` — all code must pass with zero errors.
-- Use Gherkin + `@cucumber/cucumber` for outer-loop acceptance tests.
+
 - Use Vitest for inner-loop TDD — tests must pass before claiming completion.
 - Use `vitest bench` for performance-sensitive code.
 - Validate package.json publish correctness with `publint` for all packages under `packages/`.
@@ -214,7 +214,6 @@ After each feature or bug fix, run:
 just format
 just lint
 just test
-just bdd
 just test-all
 just publint
 ```
@@ -223,8 +222,8 @@ If any command fails, report the failure and do not claim completion.
 
 ## Testing Requirements
 
-- BDD scenarios: place Gherkin features under `features/` and step definitions under `features/step_definitions/`.
-- Use BDD to define acceptance behavior first, then use Vitest for the inner TDD loop.
+
+
 - Unit tests: colocate with source files (`*.test.ts` next to `*.ts`).
 - Keep property tests in the same Vitest-discovered `*.test.ts` path used by `just test`; do not create a separate property-test command.
 - Prefer example-based tests for concrete business cases and edge cases that should stay readable in one example.
