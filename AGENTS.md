@@ -1,245 +1,84 @@
-# Bun/TypeScript Workspace Agent Instructions
+# Web Search MCP Agent Instructions
+
+## Non-negotiables
+
+- Surgical edits only: every changed line must trace to the request. No drive-by refactors, no reformatting untouched code, no deleting pre-existing dead code (mention it instead).
+- Fix root causes. Never silence a warning, weaken a check, or patch a symptom to make a gate pass.
+- Never report completion while any `just` gate below fails. Report the failure verbatim and stop.
+- Stop and ask when a request is ambiguous, conflicts with existing conventions, or requires credentials, publishing, or destructive operations.
+- When a correction reveals a missing rule, add one specific rule here ("always X for Y", never "be careful with Y"); delete rules that never catch real errors.
 
 ## Scope
 
-- This template targets Bun + TypeScript backend workspaces only.
-- `apps/` contains executable application packages.
-- `packages/` contains reusable library packages.
-- No frontend/React/browser-specific assumptions.
+- `websearch-mcp` is a Bun + TypeScript monorepo around one MCP server: it searches the web through several providers, extracts page content as Markdown, and resolves structured content from GitHub issues, Stack Exchange and Wikipedia.
+- `apps/` holds the runnable apps: `apps/web-search-mcp` is the CLI that starts the server over stdio or HTTP, `apps/cli-app` is a scratch app. `packages/` holds the libraries: `web-search-core` (all business logic), `web-search-mcp` (the MCP server and its tool definitions) and `common` (shared utilities).
+- `packages/web-search-core` owns every decision: search aggregation, provider selection, URL policy, content resolution, fetching, parsing, sanitization, configuration and logging. The transports in `apps/` and the tool wrappers in `packages/web-search-mcp/src/tools/` are thin — never put business logic in them.
+- The server exposes exactly three tools — `web_search`, `web_fetch` and `get_content`. A new tool means a new `register*Tool` call in `packages/web-search-mcp/src/server.ts` plus a zod schema in `packages/web-search-core/src/schemas.ts`.
+- Three transports share that core: stdio (`apps/web-search-mcp/src/cli.ts`), a Bun HTTP server (`bun-http.ts`) and the Hono app used for serverless and Streamable HTTP (`hono-app.ts`, routes `/mcp`, `/health`, `/`).
+- Known drift, do not "fix" silently: `README.md`'s Testing Matrix still advertises a `features/*.feature` BDD suite and a `bdd` recipe. Neither exists in this repo — there is no BDD harness and no recipe for it.
 
-## Bun Workspace Rules (Critical)
+## Execution
 
-1. Never manually edit dependency versions in `package.json`; use `bun add`.
-2. Add root-level devDependencies with:
+- Parallelize aggressively: dispatch subagents for independent research, exploration, and implementation.
+- The core, the MCP tool layer and the two transports are separate tracks with clean dependency edges — dispatch them in parallel, but never let two agents write the same file.
+- NEVER use `git worktree`. Edit the current branch in place.
+- TDD for behavior changes: add the failing Vitest case in the owning package first, make the smallest change that passes it, then run the whole `just test` suite.
 
-   ```bash
-   bun add -d <package>
-   ```
+## Verification loop
 
-3. Add workspace-specific dependencies with:
-
-   ```bash
-   bun add <package> --filter <workspace-name>
-   ```
-
-4. Use `workspace:*` protocol for internal package references.
-5. Shared devDependencies (`typescript`, `vitest`, `@biomejs/biome`) belong in the root `package.json`.
-6. Each workspace package must have its own `package.json` with `scripts` for `build`, `test`, `lint`, `format`, `typecheck`, and `publint` (for packages under `packages/` only).
-7. Always commit `bun.lock`.
-
-## Preferred Dependencies and Versions
-
-When introducing new dependencies, prefer these unless compatibility requires a change:
-
-```json
-// js
-// lightweight, high-performance HTTP framework
-hono >= 4.12.9
-// type-safe SQL ORM
-drizzle-orm >= 0.45.1
-// Drizzle migration toolkit
-drizzle-kit >= 0.31.10
-// schema validation
-zod >= 4.3.6
-// typed functional effects and error handling
-effect >= 3.21.0
-// embedded PostgreSQL
-@electric-sql/pglite >= 0.2
-// synchronous SQLite for Bun
-better-sqlite3 >= 12.8.0
-// Redis client
-ioredis >= 5.10.1
-// high-performance structured logging
-pino >= 10.3.1
-// OpenTelemetry tracing
-@opentelemetry/api >= 1.9
-// OpenTelemetry SDK
-@opentelemetry/sdk-node >= 0.57
-// tiny ID generator
-nanoid >= 5.1.7
-// date manipulation
-date-fns >= 4.1.0
-// CLI framework (for complex CLIs)
-commander >= 14.0.3
-// lightweight CLI framework
-citty >= 0.2.1
-```
-
-## Dependency Priority and Forbidden Choices
-
-- HTTP framework preference: `hono` over `express` and `fastify`.
-- ORM preference: `drizzle-orm` over `prisma` and `typeorm`.
-- Validation preference: `zod` over `joi`, `yup`, and `io-ts`.
-- Logging preference: `pino` over `winston` and `bunyan`.
-- ID generation preference: `nanoid` over `uuid` (unless UUIDv4/v7 is required).
-- Date preference: `date-fns` or `Temporal` (when stable) over `moment` and `dayjs`.
-- Forbidden by default: `express` (use `hono`), `moment` (deprecated), `lodash` (use native), `axios` (use `fetch`).
-
-## Engineering Principles
-
-### TypeScript Implementation Guidelines
-
-1. Type safety:
-   - Enable `strict: true` in `tsconfig.json` — no exceptions.
-   - Enable `noUncheckedIndexedAccess` for safe array/object access.
-   - Enable `exactOptionalPropertyTypes` for precise optional handling.
-   - Never use `as` type assertions unless absolutely necessary and documented.
-   - Prefer `satisfies` operator over `as` for type narrowing.
-   - Use `unknown` over `any`; justify every `any` with a comment.
-2. Error handling:
-   - Use typed error classes extending `Error` with discriminated unions.
-   - Use `Result<T, E>` pattern (via `effect` or custom) for recoverable errors in libraries.
-   - Never swallow errors with empty `catch {}` blocks.
-   - Use `cause` property for error chaining (`new Error('msg', { cause: err })`).
-3. Async patterns:
-   - Default to `async/await` for all I/O operations.
-   - Use `Promise.all()` for independent concurrent operations.
-   - Use `Promise.allSettled()` when partial failures are acceptable.
-   - Never use callbacks where Promises are available.
-   - Use `AbortController` / `AbortSignal` for cancellation.
-4. Observability:
-   - Logging: `pino` with JSON output in production.
-   - Metrics/traces: OpenTelemetry OTLP gRPC.
-   - Never use `console.log` for logging in library/production code.
-5. Configuration:
-   - Use environment variables validated with `zod` or `@t3-oss/env-core`.
-   - Prefer TOML or JSON configuration files.
-6. Security:
-   - Never hardcode secrets; use environment variables.
-   - Validate all external input at system boundaries with `zod`.
-   - Use parameterized queries; never concatenate SQL strings.
-
-### Key Design Principles
-
-- Modularity: Design each package so it can be used independently with clear boundaries and explicit exports.
-- Performance: Prefer zero-copy patterns, streaming, pre-allocated buffers, and Bun-native APIs.
-- Extensibility: Use TypeScript interfaces and generics for pluggable implementations.
-- Type Safety: Maintain strong static typing across interfaces and internals; minimize use of `any`.
-
-### Performance Considerations
-
-- Use Bun-native APIs (`Bun.file()`, `Bun.write()`, `Bun.serve()`) over Node.js equivalents when available.
-- Prefer `TypedArray` (`Uint8Array`, `Float64Array`) over plain arrays for numeric/binary data.
-- Use streaming (`ReadableStream`, `TransformStream`) for large data processing instead of buffering.
-- Prefer `Map` and `Set` over plain objects for dynamic key-value storage.
-- Use `structuredClone()` over JSON parse/stringify for deep cloning.
-- Profile before optimizing; use `bun:test`'s built-in benchmarking or `vitest bench`.
-
-### Concurrency and Async Execution
-
-- Use `Promise.all()` for parallel I/O; avoid sequential awaits when operations are independent.
-- Use `Promise.allSettled()` when you need all results regardless of failures.
-- Use `AbortController` for timeout and cancellation patterns.
-- Use `AsyncLocalStorage` for request-scoped context (tracing, auth).
-- Prefer `ReadableStream` for backpressure-aware data pipelines.
-- Limit concurrent operations with semaphore patterns or `p-limit`.
-- Use Web Workers (`new Worker()`) for CPU-bound parallel processing.
-- Channel selection:
-  - Request-scoped context: `AsyncLocalStorage`
-  - Stream processing: `ReadableStream` / `TransformStream` / `WritableStream`
-  - CPU parallelism: Bun Workers
-  - Avoid `child_process.fork()` when Workers suffice
-
-### Memory and Allocation
-
-- Use `Uint8Array` and `Buffer` for binary data; avoid string-based binary manipulation.
-- Prefer `Bun.ArrayBufferSink` for high-throughput binary output.
-- Use `WeakMap` / `WeakRef` for caches that should not prevent garbage collection.
-- Avoid closure captures of large objects in long-lived callbacks or event handlers.
-- Use object pooling for objects that are created and destroyed in hot paths.
-- Prefer `flatMap()` over `map().flat()` to avoid intermediate array allocation.
-- Use `for...of` loops over `forEach()` for better V8/JSC optimization.
-
-### Type and Data Layout
-
-- Use `interface` for object shapes that may be extended; `type` for unions and computed types.
-- Use `as const` for literal type inference on configuration objects.
-- Use discriminated unions (`type: 'success' | 'error'`) for result types.
-- Use branded types (`type UserId = string & { __brand: 'UserId' }`) for domain primitives.
-- Keep error types lightweight; avoid attaching large payloads to Error subclasses.
-- Use `readonly` modifier on properties and arrays that should not be mutated.
-- Prefer `Record<K, V>` over `{ [key: string]: V }` for index signatures.
-
-### Native Interop and FFI
-
-- Use `bun:ffi` for calling native C/Rust libraries directly from Bun.
-- Keep the JS ↔ native boundary coarse-grained; minimize per-call overhead.
-- Use `CString`, `ptr`, and typed arrays for memory-safe FFI interactions.
-- Prefer Bun's built-in native modules (SQLite, hashing) over npm packages wrapping the same.
-
-### Tooling and Quality
-
-- Lint and format with Biome — all code must pass `biome check` with zero errors.
-- Apply Ultracite conventions for additional opinionated formatting.
-- Type check with `tsc --noEmit` — all code must pass with zero errors.
-
-- Use Vitest for inner-loop TDD — tests must pass before claiming completion.
-- Use `vitest bench` for performance-sensitive code.
-- Validate package.json publish correctness with `publint` for all packages under `packages/`.
-
-### Common Pitfalls
-
-- Do not use `any` without explicit justification in a comment.
-- Do not use `!` (non-null assertion) without verifying the value is guaranteed non-null.
-- Do not use `enum`; prefer `as const` objects or union types.
-- Do not mutate function parameters; treat them as immutable.
-- Do not use default exports; prefer named exports for better refactoring and tree-shaking.
-- Use ESM `import` consistently; avoid mixing `require()` and `import`.
-- Always use `const` (preferred) or `let`; never use `var`.
-
-### What to Avoid
-
-- Incomplete implementations: finish features before submitting.
-- Large, sweeping changes: keep changes focused and reviewable.
-- Mixing unrelated changes: keep one logical change per commit.
-- Using `@ts-ignore` without a specific error code and justification comment.
-
-## Development Workflow
-
-When fixing failures, identify root cause first, then apply idiomatic fixes instead of suppressing warnings or patching symptoms.
-
-Use outside-in development for behavior changes:
-
-- **Git Restrictions:** NEVER use `git worktree`. All code modifications MUST be made directly on the current branch in the existing working directory.
-- start with a failing Gherkin scenario under `features/`,
-- drive implementation with failing Vitest tests,
-- keep example-based Vitest tests as the default inner loop for named cases and edge cases,
-- add `fast-check` properties in the same `*.test.ts` files when the rule is an invariant instead of a single named example,
-- treat `jazzer.js` as conditional work for parser-like, protocol, binary-decoding, or otherwise hostile-input packages instead of baseline template scaffolding,
-- make the scenario pass without duplicating business logic in step definitions.
-
-After each feature or bug fix, run:
+After each feature or bug fix, in order; any failure means the task is not done:
 
 ```bash
 just format
 just lint
 just test
-just test-all
-just publint
 ```
 
-If any command fails, report the failure and do not claim completion.
+`format` runs `rumdl fmt`, Biome's fixer and `ultracite fix`. `lint` runs `typos`, the Markdown lint, `biome check` and `tsc --noEmit` across every workspace. `test` runs the Vitest suite in each workspace package.
 
-## Testing Requirements
+## TypeScript rules
 
+- `tsconfig.json` is strict everywhere: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `isolatedModules` and `verbatimModuleSyntax`. Do not relax a flag to make a change compile.
+- `verbatimModuleSyntax` means type-only imports must use `import type`. Biome enforces this too (`useImportType`).
+- Prefer `satisfies` over `as`; avoid `as` entirely unless the cast is unavoidable and commented. Use `unknown` over `any` and justify every `any`.
+- No `enum` — use `as const` objects or union types. No default exports — use named exports. ESM `import` only; never mix `require()` and `import`.
+- Use `const` (preferred) or `let`; never `var`. Do not mutate function parameters.
+- `strict` plus `exactOptionalPropertyTypes` means `{ x?: string }` and `{ x: string | undefined }` are different types. Be explicit about which one you mean.
+- The `.js` extension on relative imports is mandatory (`./errors.js`) — `moduleResolution` is `bundler` but the emitted code must resolve at runtime.
 
+## Repository rules
 
-- Unit tests: colocate with source files (`*.test.ts` next to `*.ts`).
-- Keep property tests in the same Vitest-discovered `*.test.ts` path used by `just test`; do not create a separate property-test command.
-- Prefer example-based tests for concrete business cases and edge cases that should stay readable in one example.
-- Prefer `fast-check` properties for invariants that should hold across many valid inputs, such as arithmetic totals, preserved item order, or checkout clearing the cart.
-- Fuzz tests: only plan or add `jazzer.js` when a package parses hostile input, decodes protocol or binary payloads, or exposes other security-sensitive parsing boundaries.
-- Fuzz workflow: when fuzzing is justified, add it only in the affected package instead of seeding a workspace-wide fuzz harness in every starter.
-- Integration tests: place in workspace-level `tests/` or `__tests__/` directories.
-- Performance tests: use `vitest bench` with `*.bench.ts` files only when the work has an explicit latency SLA, throughput target, or known hot path.
-- The existing Vitest benchmark discovery is sufficient for the template; do not add a separate benchmark command unless the project has a real workflow need for one.
-- For `/pb-plan` work, mark fuzzing as `conditional` or `N/A` unless the scope explicitly includes parser-like, protocol, binary-decoding, or hostile-input code.
-- Add tests for behavioral changes and public API changes.
-- Use Vitest's `describe`/`it`/`expect` API consistently.
-- Use `vi.mock()` for module mocking; `vi.spyOn()` for spy-based testing.
-- Use `beforeEach`/`afterEach` for setup/teardown.
-- Keep step definitions thin and delegate business rules to shared TypeScript modules.
+- Configuration is a zod schema in `packages/web-search-core/src/config.ts`. Every environment variable is read there and nowhere else; a new setting is a new schema field plus a new `env.` mapping.
+- URL safety is a hard gate. `validateUrl` rejects any scheme other than `http:`/`https:` and blocks private, loopback and link-local hosts. `resolveAndValidateUrl` then resolves the hostname and rejects private answers, which is the DNS-rebinding defence. `ALLOW_PRIVATE_NETWORK_FETCH=true` is the only override — never widen the private ranges without an explicit security decision.
+- Search providers are opt-in by credential: Brave and DuckDuckGo always run; Serper, Tavily and SearXNG are enabled only when their key or URL is configured. Add a provider in `packages/web-search-core/src/search/providers/` and register it in `getProviders` in `search/aggregate.ts`.
+- One provider failing must not fail the search: `aggregateSearch` uses `Promise.allSettled` and drops the rejected ones. Preserve that behaviour when adding providers.
+- Results are merged by normalized URL (`search/normalize.ts` strips tracking parameters, drops `www.`, removes the trailing slash and the hash), and a merged result accumulates every `source_providers` entry. Ranking then adds a multi-provider bonus, a position bonus and the `TRUSTED_DOMAINS` boost from `search/rank.ts`.
+- Timeouts are layered and must stay that way: `searchTimeoutMs` per provider, `searchTotalTimeoutMs` for the whole query, `fetchTimeoutMs` per page. The total timer is cleared in a `finally` block.
+- `fetchPage` only accepts `text/html` and `application/xhtml` and aborts above 10 MiB. Keep both limits.
+- Content resolution walks a chain: GitHub issue → Stack Exchange → Wikipedia → generic HTML (readability, then Turndown, then the sanitizer). A resolver returns `null` to fall through to the next one; it must not throw because the page is not its kind of content.
+- Errors form a closed hierarchy under `WebSearchError` with a `code` string (`ConfigurationError`, `ProviderError`, `TimeoutError`, `UnsupportedContentError`, `AntiBotBlockError`, `SecurityBlockError`, `ParseError`). Add a new failure mode as a new subclass — never throw a bare `Error` across the package boundary.
+- Logging is `pino`, created by `createLogger`. Library and server code must not call `console.log`.
+- Bun workspace rules: `bun add` for a dependency, `bun add -d` for a root devDependency, `bun add <pkg> --filter <workspace>` for a workspace dependency. Never hand-edit a version.
+- Internal packages are referenced with `workspace:*`. Shared devDependencies (`typescript`, `vitest`, `@biomejs/biome`, `fast-check`, `publint`, `tsx`, `ultracite`) live in the root `package.json`; each workspace package keeps its own `build`, `test`, `lint`, `format` and `typecheck` scripts, plus `publint` for the packages under `packages/`.
+- Always commit `bun.lock`.
 
-## Language Requirement
+## Dependency choices
 
-- Documentation, comments, and commit messages must be English only.
+- HTTP framework: `hono`, not `express` or `fastify`. Validation: `zod`, not `joi`, `yup` or `io-ts`. Logging: `pino`, not `winston` or `bunyan`. ID generation: `nanoid`, not `uuid` unless UUIDv4/v7 is required. The CLI uses `citty`, not `commander`.
+- Forbidden by default: `express` (use `hono`), `moment` and `dayjs` (use `Temporal` when stable), `lodash` (use the language built-ins), `axios` (use `fetch`).
+- `undici` supplies the `Dispatcher` used for proxy-aware requests; the proxy agents are created in `packages/web-search-core/src/security/proxy-agent.ts`.
+- The extraction pipeline uses `cheerio`, `turndown` and `@mozilla/readability`; the MCP protocol uses `@modelcontextprotocol/sdk`.
+- Biome is the linter and formatter, `ultracite` adds the opinionated conventions on top, and `tsc --noEmit` is the type check. `typos` and `rumdl` guard the Markdown.
+- There is no database, no ORM and no Redis in this repo — do not add them.
+- `publint` runs for the packages under `packages/` only, because only they are publishable.
+
+## Code conventions
+
+- Tests are colocated as `*.test.ts` next to the source, use the Vitest globals enabled in `vitest.config.ts`, and rely on `describe`/`it`/`expect` plus `vi.mock()` / `vi.spyOn()` and `beforeEach`/`afterEach`.
+- Property tests use `fast-check` inside the same `*.test.ts` file as the example-based tests — there is no separate property-test command.
+- Fuzzing with `jazzer.js` is conditional: add it only in the package that parses hostile input. Do not seed a workspace-wide fuzz harness.
+- Benchmarks are `*.bench.ts` files picked up by the existing Vitest benchmark config, and only for code with an explicit latency or throughput target.
+- Error handling: typed error classes, `cause` for chaining, never an empty `catch {}`. Never swallow a provider failure silently — it is logged and the search continues.
+- Async: `async`/`await` everywhere, `Promise.all` for independent work, `Promise.allSettled` where partial failure is acceptable, and `AbortController` for every timeout and cancellation.
+- Do not mutate function parameters. Use `readonly` arrays and properties for inputs that must not change.
+- Markdown is linted by `rumdl` with the repo's `.rumdl.toml`: ATX headings, `-` bullets, fenced blocks with a language tag.
